@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, ArrowLeft } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, sendPasswordResetEmail, signInWithRedirect } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,14 +19,6 @@ function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const isRedirecting = useRef(false);
-
-  const goHome = () => {
-    if (isRedirecting.current) return;
-    isRedirecting.current = true;
-    // Use window.location for the most reliable navigation on Vercel
-    window.location.href = "/";
-  };
 
   // Set tab from URL params
   useEffect(() => {
@@ -36,29 +28,17 @@ function AuthForm() {
     }
   }, [searchParams]);
 
-  // On mount: if user is already logged in, go home immediately
+  // Detect logged-in user (works after redirect AND for already-logged-in users)
   useEffect(() => {
-    if (auth.currentUser) {
-      window.location.href = "/";
-    }
-  }, []);
-
-  // Handle redirect result (fallback for when popup was blocked)
-  useEffect(() => {
-    const handleRedirect = async () => {
-      try {
-        const result = await getRedirectResult(auth);
-        if (result) {
-          ensureUserDoc(result.user).catch(console.error);
-          window.location.href = "/";
-        }
-      } catch (error: any) {
-        if (error.code !== "auth/cancelled-popup-request") {
-          console.error("Redirect Auth Error:", error);
-        }
+    const { onAuthStateChanged } = require("firebase/auth");
+    const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
+      if (user) {
+        // User is logged in — ensure Firestore doc exists, then go home
+        ensureUserDoc(user).catch(console.error);
+        window.location.href = "/";
       }
-    };
-    handleRedirect();
+    });
+    return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -75,7 +55,7 @@ function AuthForm() {
         });
       }
     } catch (err) {
-      console.error("ensureUserDoc error (non-blocking):", err);
+      console.error("ensureUserDoc error:", err);
     }
   };
 
@@ -99,9 +79,7 @@ function AuthForm() {
         toast.success("Link reset password telah dikirim ke email Anda!");
         setTab("login");
       }
-      if (tab !== "forgot-password") {
-        goHome();
-      }
+      // onAuthStateChanged will handle the redirect
     } catch (error: any) {
       let msg = "Terjadi kesalahan saat autentikasi.";
       if (error?.code === "auth/invalid-credential" || error?.code === "auth/wrong-password" || error?.code === "auth/user-not-found") {
@@ -123,22 +101,11 @@ function AuthForm() {
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      // DEBUG: Step 1
-      toast.info("🔄 Membuka popup Google...", { duration: 3000 });
-      const userCredential = await signInWithPopup(auth, provider);
-      // DEBUG: Step 2 - popup succeeded
-      toast.success(`✅ Login OK: ${userCredential.user.email}`, { duration: 5000 });
-      ensureUserDoc(userCredential.user).catch(console.error);
-      // Small delay to let Firebase persist the session before navigating
-      await new Promise(r => setTimeout(r, 500));
-      // DEBUG: Step 3
-      toast.info("🏠 Mengarahkan ke beranda...", { duration: 3000 });
-      window.location.href = "/";
+      // Use redirect — popup is blocked on Vercel/production browsers
+      await signInWithRedirect(auth, provider);
+      // Page navigates away. When it comes back, onAuthStateChanged will detect the user.
     } catch (error: any) {
-      const code = error.code || "unknown";
-      const msg = error.message || "Terjadi kesalahan.";
-      // Show EVERY error visibly - nothing hidden
-      toast.error(`❌ Error [${code}]`, { description: msg, duration: 15000 });
+      toast.error("Gagal masuk dengan Google", { description: error.message || "Terjadi kesalahan." });
       setLoading(false);
     }
   };
