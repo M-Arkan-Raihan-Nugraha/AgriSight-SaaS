@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, ArrowLeft } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, sendPasswordResetEmail, signInWithPopup, onAuthStateChanged } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, sendPasswordResetEmail, signInWithPopup, onAuthStateChanged, signInWithRedirect, getRedirectResult, setPersistence, browserLocalPersistence } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,17 +28,43 @@ function AuthForm() {
     }
   }, [searchParams]);
 
-  // Detect logged-in user and redirect to home
+  // Handle Google login redirect result
+  useEffect(() => {
+    let mounted = true;
+    
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result?.user) {
+          await ensureUserDoc(result.user);
+        }
+      } catch (error: any) {
+        console.error("Redirect result error:", error);
+        if (mounted) {
+          toast.error("Gagal memproses login Google", {
+            description: error.message || "Terjadi kesalahan.",
+            duration: 10000,
+          });
+        }
+      }
+    };
+
+    handleRedirectResult();
+    return () => { mounted = false; };
+  }, []);
+
+  // Detect logged-in user and redirect to home (with SPA navigation)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
       if (user) {
-        ensureUserDoc(user).catch(console.error);
-        window.location.href = "/";
+        await ensureUserDoc(user).catch(console.error);
+        // Use router.replace for SPA navigation to maintain session
+        router.replace("/");
       }
     });
     return () => unsubscribe();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router]);
 
   // Helper: create Firestore user doc if it doesn't exist
   const ensureUserDoc = async (user: any) => {
@@ -61,6 +87,9 @@ function AuthForm() {
     e.preventDefault();
     setLoading(true);
     try {
+      // Set explicit persistence for all auth methods
+      await setPersistence(auth, browserLocalPersistence);
+
       if (tab === "register") {
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         await setDoc(doc(db, "users", userCredential.user.uid), {
@@ -95,22 +124,22 @@ function AuthForm() {
     }
   };
 
-  // CRITICAL: No setLoading() before signInWithPopup!
-  // State updates trigger React re-render which breaks the user gesture chain
-  const handleGoogleLogin = () => {
-    const provider = new GoogleAuthProvider();
-    // Open popup FIRST — synchronously in click context
-    signInWithPopup(auth, provider)
-      .then(() => {
-        // onAuthStateChanged will handle redirect
-        setLoading(true);
-      })
-      .catch((error: any) => {
-        toast.error(`Gagal masuk: ${error.code || "unknown"}`, {
-          description: error.message || "Terjadi kesalahan.",
-          duration: 10000,
-        });
+  const handleGoogleLogin = async () => {
+    setLoading(true);
+    try {
+      const provider = new GoogleAuthProvider();
+      // Set explicit persistence: session survive refresh/browser reopen
+      await setPersistence(auth, browserLocalPersistence);
+      // Use redirect — popup is blocked on Vercel
+      // Works now because authDomain matches our Vercel domain (no storage partitioning)
+      await signInWithRedirect(auth, provider);
+    } catch (error: any) {
+      toast.error("Gagal masuk dengan Google", {
+        description: error.message || "Terjadi kesalahan.",
+        duration: 10000,
       });
+      setLoading(false);
+    }
   };
 
   return (

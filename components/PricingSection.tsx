@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Check, X, Zap, Crown, Building2, ArrowRight } from "lucide-react";
 import { useUser, UserTier } from "@/context/UserContext";
+import { toast } from "sonner";
 
 interface PlanFeature {
   text: string;
@@ -27,11 +28,17 @@ interface Plan {
 }
 
 export default function PricingSection() {
-  const { user, isLoggedIn, tier } = useUser();
+  const { user, isLoggedIn, tier, authLoading } = useUser();
   const [loadingTier, setLoadingTier] = useState<UserTier | null>(null);
   const router = useRouter();
 
   const handleSelectPlan = async (planTier: UserTier) => {
+    // WAJIB: Tunggu auth loading selesai sebelum cek login status
+    if (authLoading) {
+      toast.error("Sedang memproses autentikasi, silakan tunggu...");
+      return;
+    }
+    
     if (!isLoggedIn) {
       router.push("/auth?tab=register");
       return;

@@ -14,6 +14,17 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+  // Proxy Firebase Auth handler through our own domain
+  // This fixes signInWithRedirect on Vercel by avoiding third-party storage partitioning
+  async rewrites() {
+    const authDomain = process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || '';
+    return [
+      {
+        source: '/__/auth/:path*',
+        destination: `https://${authDomain}/__/auth/:path*`,
+      },
+    ];
+  },
 };
 
 export default nextConfig;
