@@ -28,12 +28,11 @@ function AuthForm() {
     }
   }, [searchParams]);
 
-  // Detect logged-in user (works after redirect AND for already-logged-in users)
+  // Detect logged-in user and redirect to home
   useEffect(() => {
     const { onAuthStateChanged } = require("firebase/auth");
     const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
       if (user) {
-        // User is logged in — ensure Firestore doc exists, then go home
         ensureUserDoc(user).catch(console.error);
         window.location.href = "/";
       }
@@ -97,17 +96,24 @@ function AuthForm() {
     }
   };
 
-  const handleGoogleLogin = async () => {
-    setLoading(true);
+  // CRITICAL: Call signInWithPopup IMMEDIATELY from click handler
+  // No state updates before popup — setLoading would trigger re-render
+  // and break the browser's user gesture chain → popup blocked
+  const handleGoogleLogin = () => {
     const provider = new GoogleAuthProvider();
-    try {
-      // Use redirect — popup is blocked on Vercel/production browsers
-      await signInWithRedirect(auth, provider);
-      // Page navigates away. When it comes back, onAuthStateChanged will detect the user.
-    } catch (error: any) {
-      toast.error("Gagal masuk dengan Google", { description: error.message || "Terjadi kesalahan." });
-      setLoading(false);
-    }
+    const { signInWithPopup } = require("firebase/auth");
+    // Open popup FIRST — synchronously in click context
+    signInWithPopup(auth, provider)
+      .then(() => {
+        // onAuthStateChanged will handle redirect
+        setLoading(true);
+      })
+      .catch((error: any) => {
+        toast.error(`Gagal masuk: ${error.code || "unknown"}`, {
+          description: error.message || "Terjadi kesalahan.",
+          duration: 10000,
+        });
+      });
   };
 
   return (
