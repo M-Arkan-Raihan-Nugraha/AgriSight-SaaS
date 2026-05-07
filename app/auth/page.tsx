@@ -24,7 +24,8 @@ function AuthForm() {
   const goHome = () => {
     if (isRedirecting.current) return;
     isRedirecting.current = true;
-    router.replace("/");
+    // Use window.location for the most reliable navigation on Vercel
+    window.location.href = "/";
   };
 
   // Set tab from URL params
@@ -41,7 +42,8 @@ function AuthForm() {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
-          await ensureUserDoc(result.user);
+          // Save user doc in background, don't block navigation
+          ensureUserDoc(result.user).catch(console.error);
           goHome();
         }
       } catch (error: any) {
@@ -56,14 +58,19 @@ function AuthForm() {
 
   // Helper: create Firestore user doc if it doesn't exist
   const ensureUserDoc = async (user: any) => {
-    const userDocRef = doc(db, "users", user.uid);
-    const userDoc = await getDoc(userDocRef);
-    if (!userDoc.exists()) {
-      await setDoc(userDocRef, {
-        name: user.displayName || user.email?.split("@")[0] || "AgriSight User",
-        email: user.email, tier: "free", role: "owner",
-        createdAt: new Date().toISOString(),
-      });
+    try {
+      const userDocRef = doc(db, "users", user.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (!userDoc.exists()) {
+        await setDoc(userDocRef, {
+          name: user.displayName || user.email?.split("@")[0] || "AgriSight User",
+          email: user.email, tier: "free", role: "owner",
+          createdAt: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      // Firestore errors should not block login
+      console.error("ensureUserDoc error (non-blocking):", err);
     }
   };
 
@@ -111,24 +118,27 @@ function AuthForm() {
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      // Try popup first (most reliable)
       const userCredential = await signInWithPopup(auth, provider);
-      await ensureUserDoc(userCredential.user);
+      ensureUserDoc(userCredential.user).catch(console.error);
+      toast.success("Berhasil masuk! Mengarahkan...");
       goHome();
     } catch (error: any) {
-      // If popup is blocked, fallback to redirect
-      if (error.code === "auth/popup-blocked" || error.code === "auth/popup-closed-by-user") {
+      const code = error.code || "unknown";
+      const msg = error.message || "Terjadi kesalahan.";
+
+      if (code === "auth/popup-blocked") {
         try {
           await signInWithRedirect(auth, provider);
           return;
         } catch (redirectError: any) {
-          console.error("Google Redirect Error:", redirectError);
-          toast.error("Gagal masuk dengan Google", { description: "Browser memblokir proses login." });
+          toast.error("Gagal masuk", { description: "Popup diblokir dan redirect juga gagal." });
         }
-      } else if (error.code !== "auth/cancelled-popup-request") {
-        const msg = error.message || "Gagal masuk dengan Google.";
-        console.error("Google Auth Error:", error);
-        toast.error("Gagal masuk dengan Google", { description: msg });
+      } else if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+        // User closed the popup manually — not an error, just reset
+        toast.info("Login dibatalkan.");
+      } else {
+        // Show ALL other errors so we can debug on Vercel
+        toast.error(`Google Login Error: ${code}`, { description: msg, duration: 10000 });
       }
       setLoading(false);
     }
