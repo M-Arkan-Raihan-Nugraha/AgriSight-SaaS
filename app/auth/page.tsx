@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, ArrowLeft } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signInWithRedirect, getRedirectResult } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,33 @@ function AuthForm() {
     if (tabParam === "login" || tabParam === "register") {
       setTab(tabParam);
     }
-  }, [searchParams]);
+
+    // Handle Google Redirect Result
+    const handleRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          setLoading(true);
+          const userDocRef = doc(db, "users", result.user.uid);
+          const userDoc = await getDoc(userDocRef);
+          if (!userDoc.exists()) {
+            await setDoc(userDocRef, {
+              name: result.user.displayName || result.user.email?.split("@")[0] || "AgriSight User",
+              email: result.user.email, tier: "free", role: "owner",
+              createdAt: new Date().toISOString(),
+            });
+          }
+          router.push("/");
+        }
+      } catch (error) {
+        console.error("Redirect Auth Error:", error);
+        toast.error("Gagal masuk dengan Google via Redirect");
+      } finally {
+        setLoading(false);
+      }
+    };
+    handleRedirect();
+  }, [searchParams, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,22 +97,12 @@ function AuthForm() {
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
-      const userCredential = await signInWithPopup(auth, provider);
-      const userDocRef = doc(db, "users", userCredential.user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          name: userCredential.user.displayName || userCredential.user.email?.split("@")[0] || "AgriSight User",
-          email: userCredential.user.email, tier: "free", role: "owner",
-          createdAt: new Date().toISOString(),
-        });
-      }
-      router.push("/");
+      // Use redirect instead of popup to avoid "popup-blocked" errors in production/mobile
+      await signInWithRedirect(auth, provider);
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : "Gagal masuk dengan Google.";
       console.error("Google Auth Error:", error);
       toast.error("Gagal masuk dengan Google", { description: msg });
-    } finally {
       setLoading(false);
     }
   };
