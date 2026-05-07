@@ -1,15 +1,49 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, ArrowLeft } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, sendPasswordResetEmail, signInWithPopup, onAuthStateChanged, signInWithRedirect, getRedirectResult, setPersistence, browserLocalPersistence } from "firebase/auth";
+import { 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  GoogleAuthProvider, 
+  sendPasswordResetEmail, 
+  onAuthStateChanged, 
+  signInWithRedirect, 
+  getRedirectResult, 
+  setPersistence, 
+  browserLocalPersistence 
+} from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+
+// Move cache and helper outside component to avoid remount resets and hoisting issues
+const userDocCache = new Set<string>();
+
+async function ensureUserDoc(user: any) {
+  if (!user || userDocCache.has(user.uid)) return;
+
+  try {
+    const userDocRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists()) {
+      await setDoc(userDocRef, {
+        name: user.displayName || user.email?.split("@")[0] || "AgriSight User",
+        email: user.email,
+        tier: "free",
+        role: "owner",
+        createdAt: new Date().toISOString(),
+      });
+    }
+    userDocCache.add(user.uid);
+  } catch (err) {
+    console.error("ensureUserDoc error:", err);
+  }
+}
 
 function AuthForm() {
   const router = useRouter();
@@ -19,6 +53,7 @@ function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const redirectHandled = useRef(false);
 
   // Set tab from URL params
   useEffect(() => {
@@ -37,6 +72,9 @@ function AuthForm() {
         const result = await getRedirectResult(auth);
         if (result?.user) {
           await ensureUserDoc(result.user);
+          if (mounted) {
+            toast.success("Berhasil masuk dengan Google!");
+          }
         }
       } catch (error: any) {
         console.error("Redirect result error:", error);
@@ -51,37 +89,21 @@ function AuthForm() {
 
     handleRedirectResult();
     return () => { mounted = false; };
-  }, []);
+  }, [router]);
 
   // Detect logged-in user and redirect to home (with SPA navigation)
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
       if (user) {
         await ensureUserDoc(user).catch(console.error);
-        // Use router.replace for SPA navigation to maintain session
-        router.replace("/");
+        if (!redirectHandled.current && typeof window !== "undefined" && window.location.pathname !== "/") {
+          redirectHandled.current = true;
+          router.replace("/");
+        }
       }
     });
     return () => unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
-
-  // Helper: create Firestore user doc if it doesn't exist
-  const ensureUserDoc = async (user: any) => {
-    try {
-      const userDocRef = doc(db, "users", user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (!userDoc.exists()) {
-        await setDoc(userDocRef, {
-          name: user.displayName || user.email?.split("@")[0] || "AgriSight User",
-          email: user.email, tier: "free", role: "owner",
-          createdAt: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      console.error("ensureUserDoc error:", err);
-    }
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,7 +153,6 @@ function AuthForm() {
       // Set explicit persistence: session survive refresh/browser reopen
       await setPersistence(auth, browserLocalPersistence);
       // Use redirect — popup is blocked on Vercel
-      // Works now because authDomain matches our Vercel domain (no storage partitioning)
       await signInWithRedirect(auth, provider);
     } catch (error: any) {
       toast.error("Gagal masuk dengan Google", {
@@ -153,10 +174,10 @@ function AuthForm() {
           <img src="/images/logo.jpeg" alt="AgriSight Logo" className="w-16 h-16 rounded-2xl object-cover shadow-md shadow-green-200/50" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-black tracking-tight text-gray-900">
-          {tab === "login" ? "Selamat Datang Kembali" : "Mulai Bersama AgriSight"}
+          {tab === "login" ? "Selamat Datang Kembali" : tab === "register" ? "Mulai Bersama AgriSight" : "Lupa Password?"}
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
-          {tab === "login" ? "Masuk untuk melihat update harga terbaru" : "Buat akun gratis untuk mendapatkan rekomendasi pintar"}
+          {tab === "login" ? "Masuk untuk melihat update harga terbaru" : tab === "register" ? "Buat akun gratis untuk mendapatkan rekomendasi pintar" : "Masukkan email Anda untuk menerima link reset password"}
         </p>
       </div>
 
@@ -168,12 +189,6 @@ function AuthForm() {
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
-            {tab === "forgot-password" ? (
-              <div className="text-center mb-4">
-                <h3 className="text-lg font-bold text-gray-900 mb-2">Lupa Password?</h3>
-                <p className="text-sm text-gray-500">Masukkan email Anda untuk menerima link reset password.</p>
-              </div>
-            ) : null}
             {tab === "register" && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Nama Lengkap</label>

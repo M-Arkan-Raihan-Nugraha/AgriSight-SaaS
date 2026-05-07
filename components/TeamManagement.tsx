@@ -31,7 +31,7 @@ interface TeamMember {
 }
 
 export default function TeamManagement() {
-  const { user, tier } = useUser();
+  const { user, tier, authLoading } = useUser();
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -126,6 +126,14 @@ export default function TeamManagement() {
       toast.error("Error", { description: message });
     }
   };
+
+  if (authLoading) {
+    return (
+      <Card className="mb-8 p-8 flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-amber-200 border-t-amber-500 rounded-full animate-spin" />
+      </Card>
+    );
+  }
 
   if (!user || tier !== "bisnis" || user.role !== "owner") {
     return null;

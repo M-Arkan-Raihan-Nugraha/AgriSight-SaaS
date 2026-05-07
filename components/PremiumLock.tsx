@@ -13,7 +13,15 @@ interface PremiumLockProps {
 }
 
 export default function PremiumLock({ children, feature, title }: PremiumLockProps) {
-  const { isPremiumFeature, tier } = useUser();
+  const { isPremiumFeature, tier, authLoading } = useUser();
+
+  if (authLoading) {
+    return (
+      <div className="min-h-[200px] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-green-200 border-t-green-600 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (isPremiumFeature(feature)) {
     return <>{children}</>;
