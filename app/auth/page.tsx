@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, ArrowLeft } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signInWithRedirect, getRedirectResult } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signInWithRedirect, getRedirectResult, onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,13 @@ function AuthForm() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    // Redirect if already logged in
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user && !loading) {
+        router.push("/");
+      }
+    });
+
     const tabParam = searchParams.get("tab");
     if (tabParam === "login" || tabParam === "register") {
       setTab(tabParam);
@@ -43,15 +50,20 @@ function AuthForm() {
           }
           router.push("/");
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Redirect Auth Error:", error);
-        toast.error("Gagal masuk dengan Google via Redirect");
+        // Only show toast if it's a real error, not just a cancelled redirect
+        if (error.code !== "auth/cancelled-popup-request") {
+          toast.error("Gagal masuk dengan Google via Redirect");
+        }
       } finally {
         setLoading(false);
       }
     };
     handleRedirect();
-  }, [searchParams, router]);
+
+    return () => unsubscribe();
+  }, [searchParams, router, loading]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
