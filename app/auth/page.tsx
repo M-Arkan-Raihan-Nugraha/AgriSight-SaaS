@@ -20,50 +20,54 @@ function AuthForm() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Separate effect: redirect if user is already logged in
   useEffect(() => {
-    // Redirect if already logged in
     const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user && !loading) {
+      if (user) {
         router.push("/");
       }
     });
+    return () => unsubscribe();
+  }, [router]);
 
+  // Set tab from URL params
+  useEffect(() => {
     const tabParam = searchParams.get("tab");
     if (tabParam === "login" || tabParam === "register") {
       setTab(tabParam);
     }
+  }, [searchParams]);
 
-    // Handle Google Redirect Result
+  // Handle redirect result (fallback for when popup was blocked)
+  useEffect(() => {
     const handleRedirect = async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
-          setLoading(true);
-          const userDocRef = doc(db, "users", result.user.uid);
-          const userDoc = await getDoc(userDocRef);
-          if (!userDoc.exists()) {
-            await setDoc(userDocRef, {
-              name: result.user.displayName || result.user.email?.split("@")[0] || "AgriSight User",
-              email: result.user.email, tier: "free", role: "owner",
-              createdAt: new Date().toISOString(),
-            });
-          }
+          await ensureUserDoc(result.user);
           router.push("/");
         }
       } catch (error: any) {
-        console.error("Redirect Auth Error:", error);
-        // Only show toast if it's a real error, not just a cancelled redirect
         if (error.code !== "auth/cancelled-popup-request") {
-          toast.error("Gagal masuk dengan Google via Redirect");
+          console.error("Redirect Auth Error:", error);
         }
-      } finally {
-        setLoading(false);
       }
     };
     handleRedirect();
+  }, [router]);
 
-    return () => unsubscribe();
-  }, [searchParams, router, loading]);
+  // Helper: create Firestore user doc if it doesn't exist
+  const ensureUserDoc = async (user: any) => {
+    const userDocRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists()) {
+      await setDoc(userDocRef, {
+        name: user.displayName || user.email?.split("@")[0] || "AgriSight User",
+        email: user.email, tier: "free", role: "owner",
+        createdAt: new Date().toISOString(),
+      });
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -107,14 +111,27 @@ function AuthForm() {
 
   const handleGoogleLogin = async () => {
     setLoading(true);
+    const provider = new GoogleAuthProvider();
     try {
-      const provider = new GoogleAuthProvider();
-      // Use redirect instead of popup to avoid "popup-blocked" errors in production/mobile
-      await signInWithRedirect(auth, provider);
-    } catch (error: unknown) {
-      const msg = error instanceof Error ? error.message : "Gagal masuk dengan Google.";
-      console.error("Google Auth Error:", error);
-      toast.error("Gagal masuk dengan Google", { description: msg });
+      // Try popup first (most reliable, works on desktop & most mobile)
+      const userCredential = await signInWithPopup(auth, provider);
+      await ensureUserDoc(userCredential.user);
+      router.push("/");
+    } catch (error: any) {
+      // If popup is blocked, fallback to redirect
+      if (error.code === "auth/popup-blocked" || error.code === "auth/popup-closed-by-user") {
+        try {
+          await signInWithRedirect(auth, provider);
+          return; // Page will redirect, no need to setLoading(false)
+        } catch (redirectError: any) {
+          console.error("Google Redirect Error:", redirectError);
+          toast.error("Gagal masuk dengan Google", { description: "Browser memblokir proses login." });
+        }
+      } else if (error.code !== "auth/cancelled-popup-request") {
+        const msg = error.message || "Gagal masuk dengan Google.";
+        console.error("Google Auth Error:", error);
+        toast.error("Gagal masuk dengan Google", { description: msg });
+      }
       setLoading(false);
     }
   };
