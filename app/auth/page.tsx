@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, ArrowLeft } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signInWithRedirect, getRedirectResult, onAuthStateChanged } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signInWithRedirect, getRedirectResult } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,16 +19,13 @@ function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const isRedirecting = useRef(false);
 
-  // Separate effect: redirect if user is already logged in
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        router.push("/");
-      }
-    });
-    return () => unsubscribe();
-  }, [router]);
+  const goHome = () => {
+    if (isRedirecting.current) return;
+    isRedirecting.current = true;
+    router.replace("/");
+  };
 
   // Set tab from URL params
   useEffect(() => {
@@ -45,7 +42,7 @@ function AuthForm() {
         const result = await getRedirectResult(auth);
         if (result) {
           await ensureUserDoc(result.user);
-          router.push("/");
+          goHome();
         }
       } catch (error: any) {
         if (error.code !== "auth/cancelled-popup-request") {
@@ -54,7 +51,8 @@ function AuthForm() {
       }
     };
     handleRedirect();
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Helper: create Firestore user doc if it doesn't exist
   const ensureUserDoc = async (user: any) => {
@@ -90,7 +88,7 @@ function AuthForm() {
         setTab("login");
       }
       if (tab !== "forgot-password") {
-        router.push("/");
+        goHome();
       }
     } catch (error: any) {
       let msg = "Terjadi kesalahan saat autentikasi.";
@@ -113,16 +111,16 @@ function AuthForm() {
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      // Try popup first (most reliable, works on desktop & most mobile)
+      // Try popup first (most reliable)
       const userCredential = await signInWithPopup(auth, provider);
       await ensureUserDoc(userCredential.user);
-      router.push("/");
+      goHome();
     } catch (error: any) {
       // If popup is blocked, fallback to redirect
       if (error.code === "auth/popup-blocked" || error.code === "auth/popup-closed-by-user") {
         try {
           await signInWithRedirect(auth, provider);
-          return; // Page will redirect, no need to setLoading(false)
+          return;
         } catch (redirectError: any) {
           console.error("Google Redirect Error:", redirectError);
           toast.error("Gagal masuk dengan Google", { description: "Browser memblokir proses login." });
