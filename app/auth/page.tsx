@@ -4,7 +4,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Mail, Lock, User, ArrowRight, ArrowLeft } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, sendPasswordResetEmail, signInWithRedirect } from "firebase/auth";
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, GoogleAuthProvider, sendPasswordResetEmail, signInWithPopup, onAuthStateChanged } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -30,7 +30,6 @@ function AuthForm() {
 
   // Detect logged-in user and redirect to home
   useEffect(() => {
-    const { onAuthStateChanged } = require("firebase/auth");
     const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
       if (user) {
         ensureUserDoc(user).catch(console.error);
@@ -96,12 +95,10 @@ function AuthForm() {
     }
   };
 
-  // CRITICAL: Call signInWithPopup IMMEDIATELY from click handler
-  // No state updates before popup — setLoading would trigger re-render
-  // and break the browser's user gesture chain → popup blocked
+  // CRITICAL: No setLoading() before signInWithPopup!
+  // State updates trigger React re-render which breaks the user gesture chain
   const handleGoogleLogin = () => {
     const provider = new GoogleAuthProvider();
-    const { signInWithPopup } = require("firebase/auth");
     // Open popup FIRST — synchronously in click context
     signInWithPopup(auth, provider)
       .then(() => {
