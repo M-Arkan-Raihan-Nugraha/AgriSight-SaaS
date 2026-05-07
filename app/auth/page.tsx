@@ -36,15 +36,21 @@ function AuthForm() {
     }
   }, [searchParams]);
 
+  // On mount: if user is already logged in, go home immediately
+  useEffect(() => {
+    if (auth.currentUser) {
+      window.location.href = "/";
+    }
+  }, []);
+
   // Handle redirect result (fallback for when popup was blocked)
   useEffect(() => {
     const handleRedirect = async () => {
       try {
         const result = await getRedirectResult(auth);
         if (result) {
-          // Save user doc in background, don't block navigation
           ensureUserDoc(result.user).catch(console.error);
-          goHome();
+          window.location.href = "/";
         }
       } catch (error: any) {
         if (error.code !== "auth/cancelled-popup-request") {
@@ -69,7 +75,6 @@ function AuthForm() {
         });
       }
     } catch (err) {
-      // Firestore errors should not block login
       console.error("ensureUserDoc error (non-blocking):", err);
     }
   };
@@ -118,28 +123,22 @@ function AuthForm() {
     setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
+      // DEBUG: Step 1
+      toast.info("🔄 Membuka popup Google...", { duration: 3000 });
       const userCredential = await signInWithPopup(auth, provider);
+      // DEBUG: Step 2 - popup succeeded
+      toast.success(`✅ Login OK: ${userCredential.user.email}`, { duration: 5000 });
       ensureUserDoc(userCredential.user).catch(console.error);
-      toast.success("Berhasil masuk! Mengarahkan...");
-      goHome();
+      // Small delay to let Firebase persist the session before navigating
+      await new Promise(r => setTimeout(r, 500));
+      // DEBUG: Step 3
+      toast.info("🏠 Mengarahkan ke beranda...", { duration: 3000 });
+      window.location.href = "/";
     } catch (error: any) {
       const code = error.code || "unknown";
       const msg = error.message || "Terjadi kesalahan.";
-
-      if (code === "auth/popup-blocked") {
-        try {
-          await signInWithRedirect(auth, provider);
-          return;
-        } catch (redirectError: any) {
-          toast.error("Gagal masuk", { description: "Popup diblokir dan redirect juga gagal." });
-        }
-      } else if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
-        // User closed the popup manually — not an error, just reset
-        toast.info("Login dibatalkan.");
-      } else {
-        // Show ALL other errors so we can debug on Vercel
-        toast.error(`Google Login Error: ${code}`, { description: msg, duration: 10000 });
-      }
+      // Show EVERY error visibly - nothing hidden
+      toast.error(`❌ Error [${code}]`, { description: msg, duration: 15000 });
       setLoading(false);
     }
   };
