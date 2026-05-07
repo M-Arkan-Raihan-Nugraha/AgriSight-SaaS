@@ -1,0 +1,21 @@
+{
+  "name": "AgriSight – Smart Price Tracker",
+  "short_name": "AgriSight",
+  "description": "Pantau harga komoditas pangan real-time dari Bank Indonesia PIHPS dengan rekomendasi cerdas untuk petani.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0fdf4",
+  "theme_color": "#16a34a",
+  "icons": [
+    {
+      "src": "/images/logo.jpeg",
+      "sizes": "192x192",
+      "type": "image/jpeg"
+    },
+    {
+      "src": "/images/logo.jpeg",
+      "sizes": "512x512",
+      "type": "image/jpeg"
+    }
+  ]
+}
