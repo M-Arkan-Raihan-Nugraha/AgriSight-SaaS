@@ -36,7 +36,7 @@ export default function PricingSection() {
   const handleSelectPlan = async (planTier: UserTier) => {
     // Fitur kontak tim (Bisnis) bisa diakses tanpa login
     if (planTier === "bisnis") {
-      window.open("https://www.instagram.com/zielabs/", "_blank");
+      window.location.href = "https://www.instagram.com/zielabs/";
       return;
     }
 
@@ -184,7 +184,7 @@ export default function PricingSection() {
         {/* Plans grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-8 max-w-5xl mx-auto">
           {plans.map((plan) => {
-            const isCurrentPlan = isLoggedIn && tier === plan.tier;
+            const isCurrentPlan = isLoggedIn && tier === plan.tier && plan.tier !== "bisnis";
             const isPopular = plan.popular;
 
             return (
