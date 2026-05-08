@@ -21,7 +21,7 @@ const TIER_BADGES = {
 export default function Navbar({ alertCount, onAlertClick, liveStatus = "live" }: NavbarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const { user, isLoggedIn, tier, logout } = useUser();
+  const { user, isLoggedIn, tier, logout, authLoading } = useUser();
   const pathname = usePathname();
   const router = useRouter();
 
@@ -99,7 +99,12 @@ export default function Navbar({ alertCount, onAlertClick, liveStatus = "live" }
             </button>
 
             {/* Auth area */}
-            {isLoggedIn ? (
+            {authLoading ? (
+              <div className="flex items-center gap-2 px-2 py-1">
+                <div className="w-8 h-8 rounded-xl bg-gray-100 animate-pulse" />
+                <div className="hidden sm:block w-24 h-5 rounded-md bg-gray-100 animate-pulse ml-1" />
+              </div>
+            ) : isLoggedIn ? (
               <div className="relative">
                 <button
                   onClick={() => setProfileOpen(!profileOpen)}

@@ -3,7 +3,31 @@
 import { createContext, useContext, useState, ReactNode, useEffect } from "react";
 import { auth, db } from "@/lib/firebase";
 import { onAuthStateChanged, signOut } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, getDoc, setDoc } from "firebase/firestore";
+
+// Move cache and helper outside component to avoid remount resets
+const userDocCache = new Set<string>();
+
+async function ensureUserDoc(user: any) {
+  if (!user || userDocCache.has(user.uid)) return;
+
+  try {
+    const userDocRef = doc(db, "users", user.uid);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists()) {
+      await setDoc(userDocRef, {
+        name: user.displayName || user.email?.split("@")[0] || "AgriSight User",
+        email: user.email,
+        tier: "free",
+        role: "owner",
+        createdAt: new Date().toISOString(),
+      });
+    }
+    userDocCache.add(user.uid);
+  } catch (err) {
+    console.error("ensureUserDoc error:", err);
+  }
+}
 
 // ─── Types ───
 export type UserTier = "free" | "pro" | "bisnis";
@@ -69,6 +93,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        // Asynchronously ensure user doc exists without blocking UI update
+        ensureUserDoc(firebaseUser).catch(console.error);
+
         // Listen to Firestore doc
         const userDocRef = doc(db, "users", firebaseUser.uid);
         unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {

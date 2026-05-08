@@ -9,41 +9,17 @@ import {
   signInWithEmailAndPassword, 
   GoogleAuthProvider, 
   sendPasswordResetEmail, 
-  onAuthStateChanged, 
   signInWithRedirect, 
   getRedirectResult, 
   setPersistence, 
   browserLocalPersistence 
 } from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
 import { toast } from "sonner";
+import { doc, setDoc } from "firebase/firestore";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-
-// Move cache and helper outside component to avoid remount resets and hoisting issues
-const userDocCache = new Set<string>();
-
-async function ensureUserDoc(user: any) {
-  if (!user || userDocCache.has(user.uid)) return;
-
-  try {
-    const userDocRef = doc(db, "users", user.uid);
-    const userDoc = await getDoc(userDocRef);
-    if (!userDoc.exists()) {
-      await setDoc(userDocRef, {
-        name: user.displayName || user.email?.split("@")[0] || "AgriSight User",
-        email: user.email,
-        tier: "free",
-        role: "owner",
-        createdAt: new Date().toISOString(),
-      });
-    }
-    userDocCache.add(user.uid);
-  } catch (err) {
-    console.error("ensureUserDoc error:", err);
-  }
-}
+import { useUser } from "@/context/UserContext";
 
 function AuthForm() {
   const router = useRouter();
@@ -53,7 +29,8 @@ function AuthForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
-  const redirectHandled = useRef(false);
+  const [isCheckingRedirect, setIsCheckingRedirect] = useState(true);
+  const { user, authLoading } = useUser();
 
   // Set tab from URL params
   useEffect(() => {
@@ -63,7 +40,7 @@ function AuthForm() {
     }
   }, [searchParams]);
 
-  // Handle Google login redirect result
+  // Handle Google login redirect result to show toast
   useEffect(() => {
     let mounted = true;
     
@@ -71,7 +48,6 @@ function AuthForm() {
       try {
         const result = await getRedirectResult(auth);
         if (result?.user) {
-          await ensureUserDoc(result.user);
           if (mounted) {
             toast.success("Berhasil masuk dengan Google!");
           }
@@ -84,26 +60,26 @@ function AuthForm() {
             duration: 10000,
           });
         }
+      } finally {
+        if (mounted) {
+          setIsCheckingRedirect(false);
+        }
       }
     };
 
     handleRedirectResult();
-    return () => { mounted = false; };
-  }, [router]);
 
-  // Detect logged-in user and redirect to home (with SPA navigation)
+    return () => { 
+      mounted = false;
+    };
+  }, []);
+
+  // Redirect logically when user is ready
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user: any) => {
-      if (user) {
-        await ensureUserDoc(user).catch(console.error);
-        if (!redirectHandled.current && typeof window !== "undefined" && window.location.pathname !== "/") {
-          redirectHandled.current = true;
-          router.replace("/");
-        }
-      }
-    });
-    return () => unsubscribe();
-  }, [router]);
+    if (!authLoading && user && !isCheckingRedirect) {
+      router.replace("/");
+    }
+  }, [authLoading, user, isCheckingRedirect, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,7 +104,7 @@ function AuthForm() {
         toast.success("Link reset password telah dikirim ke email Anda!");
         setTab("login");
       }
-      // onAuthStateChanged will handle the redirect
+      // UserContext akan menangani redirect saat authLoading false dan user ada
     } catch (error: any) {
       let msg = "Terjadi kesalahan saat autentikasi.";
       if (error?.code === "auth/invalid-credential" || error?.code === "auth/wrong-password" || error?.code === "auth/user-not-found") {
@@ -162,6 +138,19 @@ function AuthForm() {
       setLoading(false);
     }
   };
+
+  const isInitializing = authLoading || isCheckingRedirect || (user != null);
+
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="flex flex-col items-center">
+          <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mb-4" />
+          <p className="text-sm font-medium text-gray-500 animate-pulse">Memeriksa sesi pengguna...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative">
