@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Check, X, Zap, Crown, Building2, ArrowRight } from "lucide-react";
 import { useUser, UserTier } from "@/context/UserContext";
 import { toast } from "sonner";
+import { auth } from "@/lib/firebase";
 
 interface PlanFeature {
   text: string;
@@ -33,6 +34,12 @@ export default function PricingSection() {
   const router = useRouter();
 
   const handleSelectPlan = async (planTier: UserTier) => {
+    // Fitur kontak tim (Bisnis) bisa diakses tanpa login
+    if (planTier === "bisnis") {
+      window.open("https://www.instagram.com/zielabs/", "_blank");
+      return;
+    }
+
     // WAJIB: Tunggu auth loading selesai sebelum cek login status
     if (authLoading) {
       toast.error("Sedang memproses autentikasi, silakan tunggu...");
@@ -44,33 +51,38 @@ export default function PricingSection() {
       return;
     }
     if (planTier === "free") return;
-    if (planTier === "bisnis") {
-      window.open("https://www.instagram.com/zielabs/", "_blank");
-      return;
-    }
 
     setLoadingTier(planTier);
     try {
+      // 1. Ambil JWT Token dari Firebase Auth (Security Patch)
+      const token = await auth.currentUser?.getIdToken();
+      if (!token) {
+        toast.error("Sesi tidak valid. Silakan login ulang.");
+        setLoadingTier(null);
+        return;
+      }
+
+      // 2. Kirim request dengan Authorization Header
       const response = await fetch("/api/payment/mayar", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uid: user?.uid,
-          tier: planTier,
-          email: user?.email,
-          name: user?.name,
-        }),
+        headers: { 
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({ tier: planTier }), // Hanya kirim tier
       });
 
       const data = await response.json();
       if (data.success && data.payment_link) {
         window.location.href = data.payment_link;
       } else {
-        alert("Gagal membuat link pembayaran: " + (data.message || "Unknown error"));
+        toast.error("Gagal membuat link pembayaran", {
+          description: data.message || "Unknown error",
+        });
       }
     } catch (error) {
       console.error(error);
-      alert("Terjadi kesalahan jaringan.");
+      toast.error("Terjadi kesalahan jaringan.");
     } finally {
       setLoadingTier(null);
     }
@@ -221,7 +233,7 @@ export default function PricingSection() {
                   {/* CTA */}
                   <button
                     onClick={() => handleSelectPlan(plan.tier)}
-                    disabled={isCurrentPlan || loadingTier === plan.tier}
+                    disabled={authLoading || isCurrentPlan || loadingTier === plan.tier}
                     className={`w-full py-3.5 rounded-xl font-bold text-sm transition-all duration-300 flex items-center justify-center gap-2 mb-6
                       ${isCurrentPlan
                         ? "bg-gray-100 text-gray-400 cursor-default"
@@ -232,7 +244,7 @@ export default function PricingSection() {
                         : "bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-600/20"
                       }`}
                   >
-                    {loadingTier === plan.tier ? (
+                    {authLoading || loadingTier === plan.tier ? (
                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : isCurrentPlan ? (
                       "✓ Paket Aktif"
