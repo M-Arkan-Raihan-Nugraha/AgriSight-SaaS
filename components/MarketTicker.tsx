@@ -10,8 +10,31 @@ import {
   getBILatestPrice,
   getBIWeeklyChange,
 } from "@/data/commodityData";
+import { useDataStatus } from "@/app/providers";
 
 export default function MarketTicker() {
+  const { dataLoaded } = useDataStatus();
+
+  // Show skeleton ticker while data loads
+  if (!dataLoaded) {
+    return (
+      <div className="bg-green-950 border-b border-green-800/50 py-2 overflow-hidden relative">
+        <div className="flex items-center gap-6 px-4">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-2 shrink-0">
+              <div className="skeleton-dark h-3 w-28 rounded" />
+              <div className="skeleton-dark h-3 w-16 rounded" />
+              <div className="skeleton-dark h-3 w-10 rounded" />
+              <span className="text-green-700 mx-2">•</span>
+            </div>
+          ))}
+        </div>
+        <div className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-green-950 to-transparent pointer-events-none" />
+        <div className="absolute inset-y-0 right-0 w-16 bg-gradient-to-l from-green-950 to-transparent pointer-events-none" />
+      </div>
+    );
+  }
+
   const items: { label: string; price: string; change: number; isUp: boolean }[] = [];
 
   // Produsen data across all locations

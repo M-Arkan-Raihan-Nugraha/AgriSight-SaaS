@@ -19,6 +19,7 @@ import BIDetailPanel from "./BIDetailPanel";
 import SupplyChainPanel from "./SupplyChainPanel";
 import PremiumLock from "./PremiumLock";
 import TeamManagement from "./TeamManagement";
+import { useDataStatus } from "@/app/providers";
 
 export default function Dashboard() {
   const [selectedLocation, setSelectedLocation] = useState<Location>("nasional");
@@ -26,6 +27,7 @@ export default function Dashboard() {
   const [selectedIndex, setSelectedIndex] = useState<number>(0);
   const [showMargin, setShowMargin] = useState(false);
   const { isPremiumFeature } = useUser();
+  const { dataLoaded } = useDataStatus();
   const [lastUpdated] = useState(() => {
     const now = new Date();
     return now.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
@@ -44,6 +46,55 @@ export default function Dashboard() {
       setSelectedPriceType(avail[0] || "produsen");
     }
   };
+
+  // Inline skeleton while data loads — replaces the old full-screen blocker
+  if (!dataLoaded) {
+    return (
+      <section id="dashboard" className="py-24 bg-gray-50 overflow-hidden">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {/* Section header skeleton */}
+          <div className="mb-10">
+            <div className="skeleton h-5 w-32 mb-4" />
+            <div className="skeleton h-9 w-72 mb-2" />
+            <div className="skeleton h-4 w-96" />
+          </div>
+
+          {/* Filter bar skeleton */}
+          <div className="flex items-center gap-3 mb-4 flex-wrap">
+            <div className="skeleton h-9 w-24" />
+            <div className="skeleton h-10 w-80 rounded-xl" />
+          </div>
+          <div className="flex items-center gap-3 mb-8 flex-wrap">
+            <div className="skeleton h-9 w-24" />
+            <div className="skeleton h-10 w-96 rounded-xl" />
+          </div>
+
+          {/* Card grid skeleton */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 mb-8">
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div key={i} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="skeleton h-10 w-10 rounded-xl" />
+                  <div className="flex-1">
+                    <div className="skeleton h-4 w-24 mb-2" />
+                    <div className="skeleton h-3 w-16" />
+                  </div>
+                </div>
+                <div className="skeleton h-7 w-32 mb-2" />
+                <div className="skeleton h-3 w-20" />
+              </div>
+            ))}
+          </div>
+
+          {/* Detail panel skeleton */}
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+            <div className="skeleton h-6 w-48 mb-4" />
+            <div className="skeleton h-48 w-full rounded-xl" />
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="dashboard" className="py-24 bg-gray-50 overflow-hidden">

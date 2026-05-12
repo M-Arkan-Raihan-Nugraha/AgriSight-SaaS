@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, createContext, useContext, Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { UserProvider, useUser } from "@/context/UserContext";
 import Navbar from "@/components/Navbar";
@@ -10,6 +10,23 @@ import AlertsSection from "@/components/AlertsSection";
 import { ALERTS, fetchLivePrices } from "@/data/commodityData";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Toaster } from "@/components/ui/sonner";
+
+// ─── Data readiness context ───
+// Components can subscribe to this to show inline skeleton states
+// instead of blocking the entire page with a loading screen.
+interface DataContextType {
+  dataLoaded: boolean;
+  liveStatus: "loading" | "live" | "offline";
+}
+
+const DataContext = createContext<DataContextType>({
+  dataLoaded: false,
+  liveStatus: "loading",
+});
+
+export function useDataStatus() {
+  return useContext(DataContext);
+}
 
 function AppShell({ children }: { children: React.ReactNode }) {
   const [showAlertPanel, setShowAlertPanel] = useState(false);
@@ -42,34 +59,26 @@ function AppShell({ children }: { children: React.ReactNode }) {
     });
   }, [setShowUpgradeModal, searchParams, pathname]);
 
-  if (!dataLoaded) {
-    return (
-      <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center">
-        <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mb-4" />
-        <p className="text-green-800 font-medium">Memuat data harga terkini...</p>
-        <p className="text-green-600/60 text-sm mt-1">Mengambil data dari Bank Indonesia PIHPS</p>
-      </div>
-    );
-  }
-
   const isAuthPage = pathname === "/auth";
 
   return (
-    <div className="min-h-screen bg-white">
-      {!isAuthPage && (
-        <Navbar
-          alertCount={ALERTS.length}
-          onAlertClick={() => setShowAlertPanel(!showAlertPanel)}
-          liveStatus={liveStatus}
-        />
-      )}
-      <UpgradeModal />
-      {showAlertPanel && !isAuthPage && (
-        <AlertsSection isPanel={true} onClose={() => setShowAlertPanel(false)} />
-      )}
-      {children}
-      {!isAuthPage && <Footer />}
-    </div>
+    <DataContext.Provider value={{ dataLoaded, liveStatus }}>
+      <div className="min-h-screen bg-white">
+        {!isAuthPage && (
+          <Navbar
+            alertCount={ALERTS.length}
+            onAlertClick={() => setShowAlertPanel(!showAlertPanel)}
+            liveStatus={liveStatus}
+          />
+        )}
+        <UpgradeModal />
+        {showAlertPanel && !isAuthPage && (
+          <AlertsSection isPanel={true} onClose={() => setShowAlertPanel(false)} />
+        )}
+        {children}
+        {!isAuthPage && <Footer />}
+      </div>
+    </DataContext.Provider>
   );
 }
 
@@ -78,10 +87,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     <UserProvider>
       <TooltipProvider>
         <Suspense fallback={
-          <div className="min-h-screen bg-green-50 flex flex-col items-center justify-center">
-            <div className="w-12 h-12 border-4 border-green-200 border-t-green-600 rounded-full animate-spin mb-4" />
-            <p className="text-green-800 font-medium">Memuat...</p>
-          </div>
+          <div className="min-h-screen bg-white" />
         }>
           <AppShell>{children}</AppShell>
         </Suspense>
